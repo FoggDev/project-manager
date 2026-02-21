@@ -647,6 +647,11 @@ body {
   position: relative;
   display: inline-flex;
   -webkit-app-region: no-drag;
+  z-index: 3000;
+}
+
+.branch-selector.open {
+  z-index: 3500;
 }
 
 .branch-selector-btn {
@@ -679,7 +684,7 @@ body {
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
-  z-index: 100;
+  z-index: 3600;
   overflow: hidden;
   animation: dropdown-in 0.15s ease;
   max-height: 300px;
@@ -1207,7 +1212,9 @@ body {
   border: 1px solid var(--border-primary);
   background: var(--border-primary);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
+  z-index: 1200;
 }
 
 .git-header-pane {
@@ -1218,6 +1225,8 @@ body {
   flex-direction: column;
   justify-content: center;
   gap: 3px;
+  position: relative;
+  overflow: visible;
 }
 
 .git-header-label {
@@ -1241,6 +1250,12 @@ body {
 
 .git-header-pane-branch .branch-selector {
   width: 100%;
+  position: relative;
+  z-index: 3500;
+}
+
+.git-header-pane-branch .branch-selector .branch-dropdown {
+  z-index: 3600;
 }
 
 .git-header-pane-sync {
