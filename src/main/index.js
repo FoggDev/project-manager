@@ -6,13 +6,15 @@ import simpleGit from 'simple-git'
 import OpenAI from 'openai'
 import * as fs from 'fs'
 import * as path from 'path'
+import { spawn } from 'child_process'
 
 const store = new Store({
   defaults: {
     projects: [],
     settings: {
       openaiApiKey: '',
-      openaiModel: 'gpt-4o-mini'
+      openaiModel: 'gpt-4o-mini',
+      defaultProjectId: ''
     }
   }
 })
@@ -39,6 +41,7 @@ function createWindow() {
   })
 
   mainWindow.on('ready-to-show', () => {
+    mainWindow.maximize()
     mainWindow.show()
   })
 
@@ -163,6 +166,94 @@ async function detectProjectInfo(dirPath) {
 
   return info
 }
+
+function extractJsonObject(text) {
+  const source = String(text || '')
+  const start = source.indexOf('{')
+  const end = source.lastIndexOf('}')
+  if (start === -1 || end === -1 || end < start) return {}
+  const jsonSlice = source.slice(start, end + 1)
+  return JSON.parse(jsonSlice)
+}
+
+function runNcu(dirPath, args = []) {
+  return new Promise((resolve, reject) => {
+    const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx'
+    const child = spawn(npxCmd, ['--yes', 'npm-check-updates', ...args], {
+      cwd: dirPath,
+      env: process.env
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString()
+    })
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString()
+    })
+
+    child.on('error', (error) => {
+      reject(error)
+    })
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr })
+      } else {
+        const message = (stderr || stdout || `npm-check-updates exited with code ${code}`).trim()
+        reject(new Error(message))
+      }
+    })
+  })
+}
+
+// ── Package Updates (npm-check-updates) ────────────────────────────────────
+
+ipcMain.handle('packages:check-updates', async (_, dirPath) => {
+  try {
+    const packageJsonPath = path.join(dirPath, 'package.json')
+    if (!fs.existsSync(packageJsonPath)) {
+      return { error: 'No package.json found in this project.' }
+    }
+
+    const { stdout } = await runNcu(dirPath, ['--jsonUpgraded', '--packageFile', 'package.json'])
+    const updates = extractJsonObject(stdout)
+    const entries = Object.entries(updates)
+      .map(([name, target]) => ({ name, targetVersion: String(target) }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    return { success: true, updates: entries, count: entries.length }
+  } catch (err) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('packages:apply-updates', async (_, dirPath) => {
+  try {
+    const packageJsonPath = path.join(dirPath, 'package.json')
+    if (!fs.existsSync(packageJsonPath)) {
+      return { error: 'No package.json found in this project.' }
+    }
+
+    const { stdout: checkStdout } = await runNcu(dirPath, ['--jsonUpgraded', '--packageFile', 'package.json'])
+    const pending = extractJsonObject(checkStdout)
+    const pendingEntries = Object.entries(pending)
+      .map(([name, target]) => ({ name, targetVersion: String(target) }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    if (pendingEntries.length === 0) {
+      return { success: true, updated: false, count: 0, updates: [] }
+    }
+
+    await runNcu(dirPath, ['--upgrade', '--packageFile', 'package.json'])
+    return { success: true, updated: true, count: pendingEntries.length, updates: pendingEntries }
+  } catch (err) {
+    return { error: err.message }
+  }
+})
 
 // ── Git Operations ──────────────────────────────────────────────────────────
 

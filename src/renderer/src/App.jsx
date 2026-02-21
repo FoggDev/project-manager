@@ -3,12 +3,14 @@ import Sidebar from './components/Sidebar'
 import ProjectOverview from './components/ProjectOverview'
 import TerminalTab from './components/TerminalTab'
 import GitTab from './components/GitTab'
+import PackagesTab from './components/PackagesTab'
 import SettingsModal from './components/SettingsModal'
 import Toast from './components/Toast'
 
 function App() {
   const [projects, setProjects] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
+  const [defaultProjectId, setDefaultProjectId] = useState('')
   const [activeTab, setActiveTab] = useState('description')
   const [showSettings, setShowSettings] = useState(false)
   const [toasts, setToasts] = useState([])
@@ -28,9 +30,40 @@ function App() {
     return list
   }, [])
 
+  const persistDefaultProject = useCallback(async (projectId) => {
+    setDefaultProjectId(projectId || '')
+    try {
+      await window.api.setSettings({ defaultProjectId: projectId || '' })
+    } catch (err) {
+      console.error('Failed to persist default project:', err)
+    }
+  }, [])
+
   useEffect(() => {
-    loadProjects()
-  }, [loadProjects])
+    const loadInitialState = async () => {
+      const [list, settings] = await Promise.all([
+        loadProjects(),
+        window.api.getSettings()
+      ])
+
+      if (list.length === 0) {
+        setSelectedProject(null)
+        return
+      }
+
+      const preferredId = settings?.defaultProjectId
+      const preferredProject = preferredId ? list.find((project) => project.id === preferredId) : null
+      const initialProject = preferredProject || list[0]
+      setSelectedProject(initialProject)
+      setDefaultProjectId(preferredProject ? preferredId : initialProject.id)
+
+      if (!preferredProject) {
+        persistDefaultProject(initialProject.id)
+      }
+    }
+
+    loadInitialState()
+  }, [loadProjects, persistDefaultProject])
 
   const handleAddProject = async () => {
     const dirPath = await window.api.openDirectory()
@@ -40,23 +73,30 @@ function App() {
       addToast(result.error, 'error')
       return
     }
-    const updated = await loadProjects()
+    await loadProjects()
     setSelectedProject(result)
+    persistDefaultProject(result.id)
     addToast(`Added "${result.name}"`, 'success')
   }
 
   const handleRemoveProject = async (projectId) => {
     await window.api.removeProject(projectId)
     const updated = await loadProjects()
+    let nextProject = selectedProject
+
     if (selectedProject?.id === projectId) {
-      setSelectedProject(updated.length > 0 ? updated[0] : null)
+      nextProject = updated.length > 0 ? updated[0] : null
+      setSelectedProject(nextProject)
     }
+
+    persistDefaultProject(nextProject?.id || '')
     addToast('Project removed', 'info')
   }
 
   const handleSelectProject = (project) => {
     setSelectedProject(project)
     setActiveTab('description')
+    persistDefaultProject(project.id)
   }
 
   const filteredProjects = projects.filter((p) =>
@@ -66,7 +106,8 @@ function App() {
   const tabs = [
     { id: 'description', label: 'Description' },
     { id: 'terminal', label: 'Terminal' },
-    { id: 'git', label: 'Git' }
+    { id: 'git', label: 'Git' },
+    { id: 'packages', label: 'Packages' }
   ]
 
   return (
@@ -74,6 +115,7 @@ function App() {
       <Sidebar
         projects={filteredProjects}
         selectedProject={selectedProject}
+        defaultProjectId={defaultProjectId}
         onSelectProject={handleSelectProject}
         onAddProject={handleAddProject}
         onRemoveProject={handleRemoveProject}
@@ -123,6 +165,9 @@ function App() {
               )}
               {activeTab === 'git' && (
                 <GitTab project={selectedProject} addToast={addToast} />
+              )}
+              {activeTab === 'packages' && (
+                <PackagesTab project={selectedProject} addToast={addToast} />
               )}
             </div>
           </>

@@ -1,4 +1,4 @@
-function Sidebar({ projects, selectedProject, onSelectProject, onAddProject, onRemoveProject, searchQuery, onSearchChange }) {
+function Sidebar({ projects, selectedProject, defaultProjectId, onSelectProject, onAddProject, onRemoveProject, searchQuery, onSearchChange }) {
   const getProjectIcon = (type) => {
     switch (type) {
       case 'Node.js': return { emoji: '🟢', className: 'nodejs' }
@@ -39,7 +39,12 @@ function Sidebar({ projects, selectedProject, onSelectProject, onAddProject, onR
                 {icon.emoji}
               </div>
               <div className="project-info">
-                <div className="project-name">{project.name}</div>
+                <div className="project-name-row">
+                  <div className="project-name">{project.name}</div>
+                  {defaultProjectId === project.id && (
+                    <span className="default-project-badge" title="Default project">★</span>
+                  )}
+                </div>
                 <div className="project-type">{project.type}</div>
               </div>
               <button

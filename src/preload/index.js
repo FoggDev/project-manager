@@ -8,6 +8,10 @@ const api = {
   detectProjectInfo: (dirPath) => ipcRenderer.invoke('projects:detect-info', dirPath),
   refreshProject: (id) => ipcRenderer.invoke('projects:refresh', id),
 
+  // Packages
+  packagesCheckUpdates: (dirPath) => ipcRenderer.invoke('packages:check-updates', dirPath),
+  packagesApplyUpdates: (dirPath) => ipcRenderer.invoke('packages:apply-updates', dirPath),
+
   // Git
   gitStatus: (dirPath) => ipcRenderer.invoke('git:status', dirPath),
   gitLog: (dirPath, maxCount) => ipcRenderer.invoke('git:log', dirPath, maxCount),
