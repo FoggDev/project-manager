@@ -283,18 +283,62 @@ ipcMain.handle('git:commit', async (_, dirPath, message) => {
   try {
     const git = simpleGit(dirPath)
     const result = await git.commit(message)
-    return { success: true, summary: result.summary }
+    return { success: true, summary: result.summary, commit: result.commit }
   } catch (err) {
     return { error: err.message }
   }
 })
 
-ipcMain.handle('git:diff', async (_, dirPath, filePath) => {
+ipcMain.handle('git:undo-last-commit', async (_, dirPath, expectedHash) => {
   try {
     const git = simpleGit(dirPath)
-    const diff = await git.diff([filePath])
+    const headHash = (await git.raw(['rev-parse', 'HEAD'])).trim()
+    const status = await git.status()
+
+    if (expectedHash && !headHash.startsWith(expectedHash)) {
+      return { error: 'HEAD changed since the last refresh. Please refresh and try again.' }
+    }
+
+    if (status.tracking && Number(status.ahead || 0) <= 0) {
+      return { error: 'Latest commit is already merged/pushed. Only local unmerged commits can be undone.' }
+    }
+
+    if (status.tracking) {
+      try {
+        await git.raw(['merge-base', '--is-ancestor', 'HEAD', status.tracking])
+        return { error: 'Latest commit is already merged/pushed. Only local unmerged commits can be undone.' }
+      } catch {
+        // HEAD is not an ancestor of upstream: local commit is still unmerged.
+      }
+    }
+
+    try {
+      await git.raw(['rev-parse', '--verify', 'HEAD~1'])
+    } catch {
+      return { error: 'Cannot undo the initial commit.' }
+    }
+
+    await git.reset(['--mixed', 'HEAD~1'])
+    return { success: true, undoneHash: headHash }
+  } catch (err) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('git:diff', async (_, dirPath, filePath, contextLines = 3) => {
+  try {
+    if (!filePath) return { error: 'File path is required' }
+
+    const git = simpleGit(dirPath)
+    const parsedContext = Number(contextLines)
+    const safeContext = Number.isFinite(parsedContext)
+      ? Math.max(0, Math.min(20000, Math.floor(parsedContext)))
+      : 3
+    const unifiedArg = `--unified=${safeContext}`
+
+    const diff = await git.diff([unifiedArg, '--', filePath])
     if (!diff) {
-      const stagedDiff = await git.diff(['--cached', filePath])
+      const stagedDiff = await git.diff(['--cached', unifiedArg, '--', filePath])
       return stagedDiff
     }
     return diff
@@ -308,6 +352,110 @@ ipcMain.handle('git:diff-staged', async (_, dirPath) => {
     const git = simpleGit(dirPath)
     const diff = await git.diff(['--cached'])
     return diff
+  } catch (err) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('git:discard-file', async (_, dirPath, filePath) => {
+  try {
+    if (!filePath) return { error: 'File path is required' }
+
+    const git = simpleGit(dirPath)
+    const status = await git.status()
+    const renameParts = filePath.includes(' -> ')
+      ? filePath.split(' -> ').map((part) => part.trim()).filter(Boolean)
+      : null
+    const targetPath = renameParts ? renameParts[1] : filePath
+    const sourcePath = renameParts ? renameParts[0] : null
+    const candidatePaths = Array.from(new Set([targetPath, sourcePath].filter(Boolean)))
+    const statusEntry = (status.files || []).find((file) => file.path === filePath || file.path === targetPath)
+    const isUntracked = (status.not_added || []).includes(targetPath)
+    const isIndexAdded = statusEntry?.index === 'A'
+
+    const removePathFromDiskAndIndex = async (relativePath) => {
+      await git.raw(['rm', '--cached', '-f', '--', relativePath]).catch(() => {})
+      const absolutePath = path.join(dirPath, relativePath)
+      if (fs.existsSync(absolutePath)) {
+        fs.rmSync(absolutePath, { recursive: true, force: true })
+      }
+      await git.raw(['clean', '-fd', '--', relativePath]).catch(() => {})
+    }
+
+    const isTrackedInHead = async (relativePath) => {
+      try {
+        await git.raw(['ls-files', '--error-unmatch', '--', relativePath])
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    const trackedPaths = []
+    const untrackedPaths = []
+    for (const relativePath of candidatePaths) {
+      if (await isTrackedInHead(relativePath)) {
+        trackedPaths.push(relativePath)
+      } else {
+        untrackedPaths.push(relativePath)
+      }
+    }
+
+    if (isUntracked || isIndexAdded || untrackedPaths.length > 0) {
+      for (const relativePath of untrackedPaths.length > 0 ? untrackedPaths : [targetPath]) {
+        await removePathFromDiskAndIndex(relativePath)
+      }
+    }
+
+    if (trackedPaths.length > 0) {
+      try {
+        await git.raw(['restore', '--source=HEAD', '--staged', '--worktree', '--', ...trackedPaths])
+      } catch {
+        await git.reset(['HEAD', '--', ...trackedPaths]).catch(() => {})
+        await git.checkout(['--', ...trackedPaths]).catch(() => {})
+      }
+    }
+
+    const postStatus = await git.status()
+    const stillChanged = (postStatus.files || []).some((file) => {
+      if (file.path === filePath) return true
+      if (file.path === targetPath) return true
+      if (sourcePath && file.path === sourcePath) return true
+      if (file.path.endsWith(` -> ${targetPath}`)) return true
+      return false
+    })
+
+    if (stillChanged) {
+      return { error: `Unable to discard changes for ${targetPath}` }
+    }
+
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('git:ignore-pattern', async (_, dirPath, pattern) => {
+  try {
+    if (!pattern || !String(pattern).trim()) {
+      return { error: 'Ignore pattern is required' }
+    }
+
+    const gitignorePath = path.join(dirPath, '.gitignore')
+    const normalizedPattern = String(pattern).trim()
+
+    let content = ''
+    if (fs.existsSync(gitignorePath)) {
+      content = fs.readFileSync(gitignorePath, 'utf-8')
+    }
+
+    const lines = content.split(/\r?\n/).map((line) => line.trim())
+    if (!lines.includes(normalizedPattern)) {
+      const prefix = content.length > 0 && !content.endsWith('\n') ? '\n' : ''
+      fs.appendFileSync(gitignorePath, `${prefix}${normalizedPattern}\n`, 'utf-8')
+    }
+
+    return { success: true }
   } catch (err) {
     return { error: err.message }
   }
@@ -558,8 +706,12 @@ ipcMain.handle('dialog:open-directory', async () => {
   return result.filePaths[0]
 })
 
-ipcMain.handle('shell:open-in-finder', (_, dirPath) => {
-  shell.showItemInFolder(dirPath)
+ipcMain.handle('shell:open-in-finder', async (_, dirPath) => {
+  const result = await shell.openPath(dirPath)
+  if (result) {
+    return { error: result }
+  }
+  return { success: true }
 })
 
 ipcMain.handle('shell:open-in-editor', (_, dirPath, editor) => {
@@ -579,6 +731,17 @@ ipcMain.handle('shell:open-in-editor', (_, dirPath, editor) => {
 ipcMain.handle('shell:open-in-terminal', (_, dirPath) => {
   const { exec } = require('child_process')
   exec(`open -a Terminal "${dirPath}"`)
+})
+
+ipcMain.handle('shell:reveal-in-finder', (_, targetPath) => {
+  shell.showItemInFolder(targetPath)
+  return { success: true }
+})
+
+ipcMain.handle('shell:open-path', async (_, targetPath) => {
+  const result = await shell.openPath(targetPath)
+  if (result) return { error: result }
+  return { success: true }
 })
 
 // ── App Lifecycle ───────────────────────────────────────────────────────────

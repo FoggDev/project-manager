@@ -19,8 +19,11 @@ const api = {
   gitStage: (dirPath, files) => ipcRenderer.invoke('git:stage', dirPath, files),
   gitUnstage: (dirPath, files) => ipcRenderer.invoke('git:unstage', dirPath, files),
   gitCommit: (dirPath, message) => ipcRenderer.invoke('git:commit', dirPath, message),
-  gitDiff: (dirPath, filePath) => ipcRenderer.invoke('git:diff', dirPath, filePath),
+  gitUndoLastCommit: (dirPath, expectedHash) => ipcRenderer.invoke('git:undo-last-commit', dirPath, expectedHash),
+  gitDiff: (dirPath, filePath, contextLines) => ipcRenderer.invoke('git:diff', dirPath, filePath, contextLines),
   gitDiffStaged: (dirPath) => ipcRenderer.invoke('git:diff-staged', dirPath),
+  gitDiscardFile: (dirPath, filePath) => ipcRenderer.invoke('git:discard-file', dirPath, filePath),
+  gitIgnorePattern: (dirPath, pattern) => ipcRenderer.invoke('git:ignore-pattern', dirPath, pattern),
 
   // AI
   generateCommitMessage: (dirPath) => ipcRenderer.invoke('ai:generate-commit', dirPath),
@@ -48,8 +51,10 @@ const api = {
   // Shell / Dialog
   openDirectory: () => ipcRenderer.invoke('dialog:open-directory'),
   openInFinder: (dirPath) => ipcRenderer.invoke('shell:open-in-finder', dirPath),
+  revealInFinder: (targetPath) => ipcRenderer.invoke('shell:reveal-in-finder', targetPath),
   openInEditor: (dirPath, editor) => ipcRenderer.invoke('shell:open-in-editor', dirPath, editor),
-  openInTerminal: (dirPath) => ipcRenderer.invoke('shell:open-in-terminal', dirPath)
+  openInTerminal: (dirPath) => ipcRenderer.invoke('shell:open-in-terminal', dirPath),
+  openPath: (targetPath) => ipcRenderer.invoke('shell:open-path', targetPath)
 }
 
 if (process.contextIsolated) {
