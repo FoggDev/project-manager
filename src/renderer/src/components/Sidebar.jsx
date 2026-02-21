@@ -1,4 +1,9 @@
+import { useRef, useState } from 'react'
+
 function Sidebar({ projects, selectedProject, defaultProjectId, onSelectProject, onAddProject, onRemoveProject, searchQuery, onSearchChange }) {
+  const [isDragOver, setIsDragOver] = useState(false)
+  const dragCounterRef = useRef(0)
+
   const getProjectIcon = (type) => {
     switch (type) {
       case 'Node.js': return { emoji: '🟢', className: 'nodejs' }
@@ -7,6 +12,89 @@ function Sidebar({ projects, selectedProject, defaultProjectId, onSelectProject,
       case 'Rust': return { emoji: '🦀', className: 'rust' }
       case 'Go': return { emoji: '🔷', className: 'go' }
       default: return { emoji: '📦', className: 'unknown' }
+    }
+  }
+
+  const hasDropPayload = (event) => {
+    const transfer = event.dataTransfer
+    if (!transfer) return false
+    if (transfer.files && transfer.files.length > 0) return true
+    const types = Array.from(transfer.types || [])
+    return (
+      types.includes('Files') ||
+      types.includes('public.file-url') ||
+      types.includes('text/uri-list')
+    )
+  }
+
+  const parseUriListPaths = (uriListText) => {
+    if (!uriListText) return []
+    return uriListText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'))
+      .map((line) => {
+        if (!line.startsWith('file://')) return null
+        try {
+          const url = new URL(line)
+          let resolvedPath = decodeURIComponent(url.pathname)
+          if (/^\/[A-Za-z]:\//.test(resolvedPath)) {
+            resolvedPath = resolvedPath.slice(1)
+          }
+          return resolvedPath
+        } catch {
+          return null
+        }
+      })
+      .filter(Boolean)
+  }
+
+  const handleDragEnter = (event) => {
+    if (!hasDropPayload(event)) return
+    event.preventDefault()
+    dragCounterRef.current += 1
+    setIsDragOver(true)
+  }
+
+  const handleDragOver = (event) => {
+    if (!hasDropPayload(event)) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+  }
+
+  const handleDragLeave = (event) => {
+    if (!hasDropPayload(event)) return
+    event.preventDefault()
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false)
+    }
+  }
+
+  const handleDrop = async (event) => {
+    if (!hasDropPayload(event)) return
+    event.preventDefault()
+    dragCounterRef.current = 0
+    setIsDragOver(false)
+
+    const itemPaths = Array.from(event.dataTransfer?.items || [])
+      .filter((item) => item.kind === 'file')
+      .map((item) => {
+        const entry = item.webkitGetAsEntry?.()
+        const file = item.getAsFile?.()
+        return { path: file?.path, isDirectory: entry?.isDirectory }
+      })
+      .filter((entry) => entry.path && entry.isDirectory !== false)
+      .map((entry) => entry.path)
+
+    const filePaths = Array.from(event.dataTransfer?.files || [])
+      .map((file) => file.path)
+      .filter(Boolean)
+
+    const uriPaths = parseUriListPaths(event.dataTransfer?.getData('text/uri-list'))
+    const droppedPaths = Array.from(new Set([...itemPaths, ...filePaths, ...uriPaths]))
+    for (const dirPath of droppedPaths) {
+      await onAddProject(dirPath)
     }
   }
 
@@ -26,7 +114,16 @@ function Sidebar({ projects, selectedProject, defaultProjectId, onSelectProject,
 
       <div className="sidebar-label">Projects</div>
 
-      <div className="sidebar-projects">
+      <div
+        className={`sidebar-projects ${isDragOver ? 'drag-over' : ''}`}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {isDragOver && (
+          <div className="sidebar-drop-hint">Drop project folder(s) to add</div>
+        )}
         {projects.map((project) => {
           const icon = getProjectIcon(project.type)
           return (

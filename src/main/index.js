@@ -64,12 +64,28 @@ ipcMain.handle('projects:list', () => {
 })
 
 ipcMain.handle('projects:add', async (_, dirPath) => {
+  if (!dirPath || typeof dirPath !== 'string') {
+    return { error: 'Invalid project path' }
+  }
+
+  const normalizedPath = path.resolve(dirPath)
+  let stats
+  try {
+    stats = fs.statSync(normalizedPath)
+  } catch {
+    return { error: 'Path does not exist' }
+  }
+
+  if (!stats.isDirectory()) {
+    return { error: 'Please drop a folder, not a file' }
+  }
+
   const projects = store.get('projects')
-  if (projects.find((p) => p.path === dirPath)) {
+  if (projects.find((p) => p.path === normalizedPath)) {
     return { error: 'Project already exists' }
   }
-  const info = await detectProjectInfo(dirPath)
-  const project = { id: Date.now().toString(), path: dirPath, ...info }
+  const info = await detectProjectInfo(normalizedPath)
+  const project = { id: Date.now().toString(), path: normalizedPath, ...info }
   projects.push(project)
   store.set('projects', projects)
   return project

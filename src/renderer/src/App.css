@@ -162,9 +162,33 @@ body {
 
 .sidebar-projects {
   flex: 1;
+  position: relative;
   overflow-y: auto;
   padding: 4px 8px;
   -webkit-app-region: no-drag;
+}
+
+.sidebar-projects.drag-over {
+  background: rgba(56, 139, 253, 0.08);
+}
+
+.sidebar-drop-hint {
+  position: absolute;
+  inset: 8px;
+  border: 1px dashed var(--accent-blue);
+  border-radius: var(--radius-md);
+  background: rgba(13, 17, 23, 0.78);
+  color: #9ac7ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .project-item {

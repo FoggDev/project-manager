@@ -65,8 +65,8 @@ function App() {
     loadInitialState()
   }, [loadProjects, persistDefaultProject])
 
-  const handleAddProject = async () => {
-    const dirPath = await window.api.openDirectory()
+  const handleAddProject = async (providedDirPath = null) => {
+    const dirPath = providedDirPath || await window.api.openDirectory()
     if (!dirPath) return
     const result = await window.api.addProject(dirPath)
     if (result.error) {
