@@ -55,6 +55,7 @@ function App() {
       const preferredProject = preferredId ? list.find((project) => project.id === preferredId) : null
       const initialProject = preferredProject || list[0]
       setSelectedProject(initialProject)
+      setActiveTab('git')
       setDefaultProjectId(preferredProject ? preferredId : initialProject.id)
 
       if (!preferredProject) {
@@ -75,6 +76,7 @@ function App() {
     }
     await loadProjects()
     setSelectedProject(result)
+    setActiveTab('git')
     persistDefaultProject(result.id)
     addToast(`Added "${result.name}"`, 'success')
   }
@@ -87,6 +89,9 @@ function App() {
     if (selectedProject?.id === projectId) {
       nextProject = updated.length > 0 ? updated[0] : null
       setSelectedProject(nextProject)
+      if (nextProject) {
+        setActiveTab('git')
+      }
     }
 
     persistDefaultProject(nextProject?.id || '')
@@ -95,7 +100,7 @@ function App() {
 
   const handleSelectProject = (project) => {
     setSelectedProject(project)
-    setActiveTab('description')
+    setActiveTab('git')
     persistDefaultProject(project.id)
   }
 
