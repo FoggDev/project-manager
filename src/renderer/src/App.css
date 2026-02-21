@@ -795,11 +795,16 @@ body {
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
-  cursor: pointer;
+  cursor: default;
   font-weight: 500;
+  text-decoration: none;
 }
 
-.commit-hash:hover {
+.commit-hash-link {
+  cursor: pointer;
+}
+
+.commit-hash-link:hover {
   background: rgba(56, 139, 253, 0.2);
 }
 
@@ -1119,6 +1124,7 @@ body {
   justify-content: space-between;
   padding: 8px 0;
   margin-bottom: 8px;
+  gap: 12px;
 }
 
 .terminal-status {
@@ -1133,8 +1139,25 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  background: var(--text-tertiary);
+}
+
+.terminal-status .status-dot.status-running {
   background: var(--accent-green);
   animation: pulse 2s ease-in-out infinite;
+}
+
+.terminal-status .status-dot.status-exited {
+  background: var(--accent-orange);
+}
+
+.terminal-status .status-dot.status-error {
+  background: var(--accent-red);
+}
+
+.terminal-status .status-dot.status-starting {
+  background: var(--accent-blue);
+  animation: pulse 1.2s ease-in-out infinite;
 }
 
 @keyframes pulse {
@@ -1142,8 +1165,79 @@ body {
   50% { opacity: 0.4; }
 }
 
-.terminal-wrapper {
+.terminal-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.terminal-session-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.terminal-session-tab {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  transition: all var(--transition-fast);
+}
+
+.terminal-session-tab.active {
+  border-color: var(--accent-blue);
+  background: rgba(56, 139, 253, 0.12);
+}
+
+.terminal-session-select {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.terminal-session-tab.active .terminal-session-select {
+  color: var(--text-primary);
+}
+
+.terminal-session-close {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 8px 4px 2px;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.terminal-session-close:hover {
+  color: var(--accent-red);
+}
+
+.terminal-panels {
   flex: 1;
+  min-height: 0;
+}
+
+.terminal-panel {
+  display: none;
+  height: 100%;
+}
+
+.terminal-panel.active {
+  display: block;
+}
+
+.terminal-wrapper {
+  height: 100%;
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);

@@ -119,7 +119,7 @@ function App() {
                 <ProjectOverview project={selectedProject} addToast={addToast} />
               )}
               {activeTab === 'terminal' && (
-                <TerminalTab project={selectedProject} />
+                <TerminalTab key={selectedProject.id} project={selectedProject} />
               )}
               {activeTab === 'git' && (
                 <GitTab project={selectedProject} addToast={addToast} />

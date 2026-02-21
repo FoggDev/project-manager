@@ -324,16 +324,10 @@ ipcMain.handle('ai:generate-commit', async (_, dirPath) => {
     }
 
     const git = simpleGit(dirPath)
-    const diff = await git.diff(['--cached'])
-    if (!diff || diff.trim() === '') {
-      return { error: 'No staged changes found. Stage your changes first.' }
+    const aiContext = await buildAiCommitContext(git, dirPath)
+    if (!aiContext.hasChanges) {
+      return { error: 'No changes found in this repository.' }
     }
-
-    // Truncate diff if too long
-    const maxDiffLength = 8000
-    const truncatedDiff = diff.length > maxDiffLength
-      ? diff.substring(0, maxDiffLength) + '\n... (diff truncated)'
-      : diff
 
     const openai = new OpenAI({ apiKey: settings.openaiApiKey })
     const response = await openai.chat.completions.create({
@@ -341,28 +335,136 @@ ipcMain.handle('ai:generate-commit', async (_, dirPath) => {
       messages: [
         {
           role: 'system',
-          content: `You are a commit message generator. Given a git diff, produce a single concise commit message following the Conventional Commits format (e.g., "feat: add user login", "fix: resolve null pointer in parser", "refactor: extract helper functions"). 
+          content: `You are a git commit assistant. Given repository changes, produce:
+1) a Conventional Commits title
+2) an optional commit description/body when the title alone is not enough.
+
 Rules:
-- Use lowercase for the type and description
-- Keep the message under 72 characters
-- Be specific about WHAT changed, not HOW
-- Do not include a body or footer
-- Only return the commit message text, nothing else`
+- Title must be lowercase Conventional Commits format (feat/fix/refactor/chore/docs/test/perf/build/ci)
+- Title must be <= 72 characters
+- Description should summarize key changes in 1-4 short bullet lines when useful
+- If title fully captures a tiny single change, description can be empty
+- Output STRICT JSON only with this shape:
+{"title":"...","description":"..."}`
         },
         {
           role: 'user',
-          content: `Generate a commit message for this diff:\n\n${truncatedDiff}`
+          content: `Generate a commit title and description for these repository changes:\n\n${aiContext.prompt}`
         }
       ],
       temperature: 0.3,
-      max_tokens: 100
+      max_tokens: 260
     })
 
-    return { message: response.choices[0].message.content.trim() }
+    const content = response.choices[0].message.content?.trim() || ''
+    const parsed = parseAiCommitOutput(content)
+
+    if (!parsed.title) {
+      return { error: 'AI did not return a valid commit title.' }
+    }
+
+    return {
+      message: parsed.title, // Backward-compatible field
+      title: parsed.title,
+      description: parsed.description || ''
+    }
   } catch (err) {
     return { error: err.message }
   }
 })
+
+function truncateText(text, maxLength) {
+  if (!text) return ''
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, maxLength)}\n... (truncated)`
+}
+
+function looksBinary(buffer) {
+  const sample = buffer.subarray(0, Math.min(buffer.length, 2048))
+  for (const byte of sample) {
+    if (byte === 0) return true
+  }
+  return false
+}
+
+function readUntrackedPreview(dirPath, filePath) {
+  try {
+    const fullPath = path.join(dirPath, filePath)
+    const stat = fs.statSync(fullPath)
+    if (!stat.isFile()) return `[untracked] ${filePath}: non-file entry`
+    if (stat.size > 64 * 1024) return `[untracked] ${filePath}: file too large to preview`
+
+    const buffer = fs.readFileSync(fullPath)
+    if (looksBinary(buffer)) return `[untracked] ${filePath}: binary file`
+
+    const content = buffer.toString('utf8')
+    const preview = truncateText(content, 1200)
+    return `[untracked] ${filePath}\n${preview}`
+  } catch (err) {
+    return `[untracked] ${filePath}: unable to read (${err.message})`
+  }
+}
+
+async function buildAiCommitContext(git, dirPath) {
+  const status = await git.status()
+  const stagedDiff = await git.diff(['--cached'])
+  const unstagedDiff = await git.diff()
+
+  const statusLines = (status.files || []).map((file) => {
+    const index = file.index || ' '
+    const workTree = file.working_dir || ' '
+    return `${index}${workTree} ${file.path}`
+  })
+
+  const untrackedFiles = (status.not_added || []).slice(0, 8)
+  const untrackedPreviews = untrackedFiles.map((filePath) => readUntrackedPreview(dirPath, filePath))
+
+  const hasChanges =
+    statusLines.length > 0 ||
+    (stagedDiff && stagedDiff.trim() !== '') ||
+    (unstagedDiff && unstagedDiff.trim() !== '')
+
+  const sections = [
+    'Changed files (git status --short):',
+    statusLines.length ? statusLines.join('\n') : '(none)',
+    '',
+    'Staged diff:',
+    stagedDiff ? truncateText(stagedDiff, 7000) : '(none)',
+    '',
+    'Unstaged diff:',
+    unstagedDiff ? truncateText(unstagedDiff, 7000) : '(none)'
+  ]
+
+  if (untrackedPreviews.length > 0) {
+    sections.push('', 'Untracked file previews:', untrackedPreviews.join('\n\n'))
+  }
+
+  const prompt = truncateText(sections.join('\n'), 18000)
+  return { hasChanges, prompt }
+}
+
+function parseAiCommitOutput(content) {
+  if (!content) return { title: '', description: '' }
+
+  const normalized = content.replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim()
+
+  try {
+    const parsed = JSON.parse(normalized)
+    return {
+      title: (parsed.title || '').trim(),
+      description: (parsed.description || '').trim()
+    }
+  } catch {
+    const firstLine = normalized.split('\n')[0] || ''
+    const title = firstLine.trim()
+    const description = normalized
+      .split('\n')
+      .slice(1)
+      .join('\n')
+      .trim()
+    return { title, description }
+  }
+}
 
 // ── Terminal (node-pty) ─────────────────────────────────────────────────────
 

@@ -111,7 +111,15 @@ function GitTab({ project, addToast }) {
     if (result.error) {
       addToast(result.error, 'error')
     } else {
-      setCommitMessage(result.message)
+      const nextTitle = (result.title || result.message || '').trim()
+      if (nextTitle) {
+        setCommitMessage(nextTitle)
+      }
+
+      const nextDescription = typeof result.description === 'string'
+        ? result.description.trim()
+        : ''
+      setCommitDescription(nextDescription)
       addToast('AI commit message generated!', 'success')
     }
   }
@@ -154,6 +162,7 @@ function GitTab({ project, addToast }) {
 
   const hasChanges = status.files && status.files.length > 0
   const hasStagedChanges = status.staged && status.staged.length > 0
+  const githubRepoUrl = getGitHubRepoUrl(status.remote)
 
   return (
     <div>
@@ -233,6 +242,25 @@ function GitTab({ project, addToast }) {
                     {formatDate(commits[0].date)}
                   </span>
                 </div>
+                <div className="info-row">
+                  <div className="info-icon blue">#</div>
+                  <span className="info-label">Commit</span>
+                  {githubRepoUrl ? (
+                    <a
+                      href={`${githubRepoUrl}/commit/${commits[0].fullHash}`}
+                      className="commit-hash commit-hash-link"
+                      title="Open commit on GitHub"
+                      onClick={(event) => {
+                        event.preventDefault()
+                        window.open(`${githubRepoUrl}/commit/${commits[0].fullHash}`, '_blank', 'noopener,noreferrer')
+                      }}
+                    >
+                      {commits[0].hash}
+                    </a>
+                  ) : (
+                    <span className="commit-hash">{commits[0].hash}</span>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -244,7 +272,21 @@ function GitTab({ project, addToast }) {
               <div className="commit-list">
                 {commits.map((commit) => (
                   <div key={commit.fullHash} className="commit-item">
-                    <span className="commit-hash">{commit.hash}</span>
+                    {githubRepoUrl ? (
+                      <a
+                        href={`${githubRepoUrl}/commit/${commit.fullHash}`}
+                        className="commit-hash commit-hash-link"
+                        title="Open commit on GitHub"
+                        onClick={(event) => {
+                          event.preventDefault()
+                          window.open(`${githubRepoUrl}/commit/${commit.fullHash}`, '_blank', 'noopener,noreferrer')
+                        }}
+                      >
+                        {commit.hash}
+                      </a>
+                    ) : (
+                      <span className="commit-hash">{commit.hash}</span>
+                    )}
                     <div className="commit-details">
                       <div className="commit-message">{commit.message}</div>
                       <div className="commit-meta">{commit.author} • {formatDate(commit.date)}</div>
@@ -394,6 +436,23 @@ function formatDate(dateStr) {
   if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
   if (diffDays < 30) return `${Math.floor(diffDays / 7)} week${Math.floor(diffDays / 7) > 1 ? 's' : ''} ago`
   return date.toLocaleDateString()
+}
+
+function getGitHubRepoUrl(remoteUrl) {
+  if (!remoteUrl) return null
+  const trimmed = remoteUrl.trim()
+
+  const sshMatch = trimmed.match(/^git@github\.com:(.+?)(?:\.git)?\/?$/i)
+  if (sshMatch) return `https://github.com/${stripGitSuffix(sshMatch[1])}`
+
+  const urlMatch = trimmed.match(/^(?:https?|ssh|git):\/\/(?:git@)?github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/i)
+  if (urlMatch) return `https://github.com/${stripGitSuffix(urlMatch[1])}`
+
+  return null
+}
+
+function stripGitSuffix(repoPath) {
+  return repoPath.replace(/\.git$/i, '').replace(/\/+$/, '')
 }
 
 export default GitTab
