@@ -264,7 +264,7 @@ function GitTab({ project, addToast }) {
       addToast('No commits available to undo', 'error')
       return
     }
-    if (status?.tracking && Number(status.ahead || 0) <= 0) {
+    if (Number(status?.ahead || 0) <= 0) {
       addToast('Undo is only available for local-only commits that are not merged.', 'error')
       return
     }
@@ -418,7 +418,7 @@ function GitTab({ project, addToast }) {
   const hasChanges = status?.files && status.files.length > 0
   const hasStagedChanges = status?.staged && status.staged.length > 0
   const latestCommit = commits[0] || null
-  const canUndoLastCommit = Boolean(latestCommit) && (!status?.tracking || Number(status.ahead || 0) > 0)
+  const canUndoLastCommit = Boolean(latestCommit) && Number(status?.ahead || 0) > 0
   const githubRepoUrl = getGitHubRepoUrl(status?.remote)
   const stagedSet = new Set(status?.staged || [])
   const filteredFiles = (status?.files || []).filter((file) =>
