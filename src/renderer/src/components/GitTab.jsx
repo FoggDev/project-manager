@@ -222,7 +222,24 @@ function GitTab({ project, addToast }) {
       addToast('Please enter a commit message', 'error')
       return
     }
+
+    const changedFiles = (status?.files || []).map((file) => file.path).filter(Boolean)
+    if (changedFiles.length === 0) {
+      addToast('No changes to commit', 'error')
+      return
+    }
+
     setCommitting(true)
+    for (const filePath of changedFiles) {
+      manualUnstagedRef.current.delete(filePath)
+    }
+    const stageResult = await window.api.gitStage(project.path, changedFiles)
+    if (stageResult?.error) {
+      setCommitting(false)
+      addToast(`Commit failed: ${stageResult.error}`, 'error')
+      return
+    }
+
     const fullMessage = commitDescription
       ? `${commitMessage}\n\n${commitDescription}`
       : commitMessage
@@ -416,7 +433,7 @@ function GitTab({ project, addToast }) {
   }
 
   const hasChanges = status?.files && status.files.length > 0
-  const hasStagedChanges = status?.staged && status.staged.length > 0
+  const commitFileCount = status?.files?.length || 0
   const latestCommit = commits[0] || null
   const canUndoLastCommit = Boolean(latestCommit) && Number(status?.ahead || 0) > 0
   const githubRepoUrl = getGitHubRepoUrl(status?.remote)
@@ -622,11 +639,23 @@ function GitTab({ project, addToast }) {
                 <button
                   className="commit-submit-btn"
                   onClick={handleCommit}
-                  disabled={!commitMessage.trim() || !hasStagedChanges || committing}
+                  disabled={!commitMessage.trim() || !hasChanges || committing}
                 >
                   {committing ? <span className="spinner"></span> : '✓'}
-                  Commit {status.staged.length} file{status.staged.length === 1 ? '' : 's'}
+                  Commit {commitFileCount} file{commitFileCount === 1 ? '' : 's'}
                 </button>
+                {Number(status?.ahead || 0) > 0 && (
+                  <button
+                    className="commit-push-btn"
+                    onClick={handlePush}
+                    disabled={pushing}
+                  >
+                    <span className="btn-icon">
+                      {pushing ? <span className="spinner"></span> : '⬆️'}
+                    </span>
+                    <span>Push</span>
+                  </button>
+                )}
               </div>
               {canUndoLastCommit && (
                 <div className="last-commit-row">
@@ -783,15 +812,6 @@ function GitTab({ project, addToast }) {
               }}
             >
               Open in Cursor
-            </button>
-            <button
-              className="scm-context-item"
-              onClick={async () => {
-                await window.api.openPath(absoluteFilePath)
-                closeContextMenu()
-              }}
-            >
-              Open with Default Program
             </button>
           </div>
         )

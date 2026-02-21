@@ -1030,6 +1030,41 @@ body {
   transform: none;
 }
 
+.commit-push-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--accent-blue);
+  border: none;
+  border-radius: var(--radius-md);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.commit-push-btn:hover {
+  background: #2f81f7;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(56, 139, 253, 0.35);
+}
+
+.commit-push-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.commit-push-btn .btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* ── Diff Viewer ───────────────────────────────────────────────────────── */
 .diff-viewer {
   background: var(--bg-card);
