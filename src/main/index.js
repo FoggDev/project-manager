@@ -451,12 +451,12 @@ function parseAiCommitOutput(content) {
   try {
     const parsed = JSON.parse(normalized)
     return {
-      title: (parsed.title || '').trim(),
+      title: normalizeCommitTitle(parsed.title || ''),
       description: (parsed.description || '').trim()
     }
   } catch {
     const firstLine = normalized.split('\n')[0] || ''
-    const title = firstLine.trim()
+    const title = normalizeCommitTitle(firstLine)
     const description = normalized
       .split('\n')
       .slice(1)
@@ -464,6 +464,14 @@ function parseAiCommitOutput(content) {
       .trim()
     return { title, description }
   }
+}
+
+function normalizeCommitTitle(input) {
+  const title = String(input || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (title.length <= 72) return title
+  return title.slice(0, 72).trimEnd()
 }
 
 // ── Terminal (node-pty) ─────────────────────────────────────────────────────

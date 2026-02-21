@@ -394,7 +394,7 @@ function GitTab({ project, addToast }) {
               </div>
             </div>
             <div className="commit-actions">
-              <button className="ai-btn" onClick={handleGenerateCommit} disabled={aiLoading || !hasStagedChanges}>
+              <button className="ai-btn" onClick={handleGenerateCommit} disabled={aiLoading || !hasChanges}>
                 {aiLoading ? <span className="spinner"></span> : <span className="sparkle">✨</span>}
                 {aiLoading ? 'Generating...' : 'AI Message'}
               </button>
