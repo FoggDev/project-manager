@@ -676,7 +676,6 @@ function GitTab({ project, addToast }) {
       {contextMenu?.file && (() => {
         const menuFilePath = contextMenu.file.path
         const absoluteFilePath = toAbsolutePath(menuFilePath)
-        const isStaged = stagedSet.has(menuFilePath)
         const lastSlash = menuFilePath.lastIndexOf('/')
         const folderPath = lastSlash > -1 ? menuFilePath.slice(0, lastSlash) : ''
         const fileName = lastSlash > -1 ? menuFilePath.slice(lastSlash + 1) : menuFilePath
@@ -691,28 +690,6 @@ function GitTab({ project, addToast }) {
             onMouseDown={(event) => event.stopPropagation()}
             onContextMenu={(event) => event.preventDefault()}
           >
-            <button
-              className="scm-context-item"
-              onClick={async () => {
-                await handleViewDiff(menuFilePath)
-                closeContextMenu()
-              }}
-            >
-              View Diff
-            </button>
-            <button
-              className="scm-context-item"
-              onClick={async () => {
-                if (isStaged) {
-                  await handleUnstageFile(menuFilePath)
-                } else {
-                  await handleStageFile(menuFilePath)
-                }
-                closeContextMenu()
-              }}
-            >
-              {isStaged ? 'Unstage File' : 'Stage File'}
-            </button>
             <button
               className="scm-context-item scm-context-danger"
               onClick={async () => {
