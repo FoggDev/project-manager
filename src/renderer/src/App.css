@@ -1248,7 +1248,9 @@ body {
   border: 1px solid var(--border-primary);
   background: var(--border-primary);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
+  z-index: 5;
 }
 
 .git-header-pane {
@@ -1259,6 +1261,8 @@ body {
   flex-direction: column;
   justify-content: center;
   gap: 3px;
+  position: relative;
+  overflow: visible;
 }
 
 .git-header-label {
@@ -1282,6 +1286,16 @@ body {
 
 .git-header-pane-branch .branch-selector {
   width: 100%;
+}
+
+.git-header-pane-branch .branch-selector.open {
+  z-index: 30;
+}
+
+.git-header-pane-branch .branch-selector .branch-dropdown {
+  min-width: 300px;
+  max-width: 460px;
+  z-index: 40;
 }
 
 .git-header-pane-sync {

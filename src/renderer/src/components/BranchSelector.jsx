@@ -61,7 +61,7 @@ function BranchSelector({ project, currentBranch, onBranchChange, addToast }) {
   )
 
   return (
-    <div className="branch-selector" ref={dropdownRef}>
+    <div className={`branch-selector ${isOpen ? 'open' : ''}`} ref={dropdownRef}>
       <button className="branch-selector-btn" onClick={() => setIsOpen(!isOpen)}>
         🌿 <strong>{currentBranch}</strong> ▾
       </button>
