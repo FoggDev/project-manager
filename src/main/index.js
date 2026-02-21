@@ -273,12 +273,94 @@ ipcMain.handle('packages:apply-updates', async (_, dirPath) => {
 
 // ── Git Operations ──────────────────────────────────────────────────────────
 
+async function resolveExistingRef(git, ref) {
+  if (!ref) return null
+  try {
+    await git.raw(['rev-parse', '--verify', ref])
+    return ref
+  } catch {
+    return null
+  }
+}
+
+async function resolveUndoIntegrationRef(git, status) {
+  if (status?.tracking) {
+    const trackingRef = await resolveExistingRef(git, status.tracking)
+    if (trackingRef) return trackingRef
+  }
+
+  try {
+    const remoteHeadRef = (await git.raw(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'])).trim()
+    const resolvedRemoteHead = await resolveExistingRef(git, remoteHeadRef)
+    if (resolvedRemoteHead) return resolvedRemoteHead
+  } catch {
+    // origin/HEAD not available
+  }
+
+  const originMain = await resolveExistingRef(git, 'refs/remotes/origin/main')
+  if (originMain) return originMain
+
+  const originMaster = await resolveExistingRef(git, 'refs/remotes/origin/master')
+  if (originMaster) return originMaster
+
+  return null
+}
+
+async function evaluateUndoLastCommit(git, status, expectedHash = null) {
+  let headHash = ''
+  try {
+    headHash = (await git.raw(['rev-parse', 'HEAD'])).trim()
+  } catch {
+    return { canUndo: false, error: 'No commits available to undo.' }
+  }
+
+  if (expectedHash && !headHash.startsWith(expectedHash)) {
+    return { canUndo: false, error: 'HEAD changed since the last refresh. Please refresh and try again.' }
+  }
+
+  try {
+    await git.raw(['rev-parse', '--verify', 'HEAD~1'])
+  } catch {
+    return { canUndo: false, error: 'Cannot undo the initial commit.' }
+  }
+
+  const integrationRef = await resolveUndoIntegrationRef(git, status)
+  if (integrationRef) {
+    try {
+      const localOnlyRaw = await git.raw(['rev-list', `${integrationRef}..HEAD`])
+      const localOnlyHashes = localOnlyRaw
+        .split('\n')
+        .map((hash) => hash.trim())
+        .filter(Boolean)
+
+      // Hash-based check: HEAD must exist in commits reachable from HEAD but not from integrationRef.
+      if (!localOnlyHashes.includes(headHash)) {
+        const integrationLabel = integrationRef.replace(/^refs\/remotes\//, '')
+        return {
+          canUndo: false,
+          error: `Latest commit is already merged into ${integrationLabel}. Only unmerged commits can be undone.`
+        }
+      }
+    } catch {
+      // If this check fails unexpectedly, fall back to tracking/ahead signal below.
+    }
+  }
+
+  // Fallback for repos where integration ref can't be resolved.
+  if (integrationRef == null && status?.tracking && Number(status?.ahead || 0) <= 0) {
+    return { canUndo: false, error: 'Latest commit is already pushed. Only local unmerged commits can be undone.' }
+  }
+
+  return { canUndo: true, headHash }
+}
+
 ipcMain.handle('git:status', async (_, dirPath) => {
   try {
     const git = simpleGit(dirPath)
     const status = await git.status()
     const branch = status.current
     const remotes = await git.getRemotes(true)
+    const undoState = await evaluateUndoLastCommit(git, status)
     return {
       branch,
       remote: remotes[0]?.refs?.fetch || null,
@@ -289,7 +371,10 @@ ipcMain.handle('git:status', async (_, dirPath) => {
       files: status.files,
       tracking: status.tracking,
       ahead: status.ahead,
-      behind: status.behind
+      behind: status.behind,
+      canUndoLastCommit: undoState.canUndo,
+      undoBlockedReason: undoState.canUndo ? null : undoState.error,
+      undoHeadHash: undoState.canUndo ? undoState.headHash : null
     }
   } catch (err) {
     return { error: err.message }
@@ -415,53 +500,14 @@ ipcMain.handle('git:commit', async (_, dirPath, message) => {
 ipcMain.handle('git:undo-last-commit', async (_, dirPath, expectedHash) => {
   try {
     const git = simpleGit(dirPath)
-    const headHash = (await git.raw(['rev-parse', 'HEAD'])).trim()
     const status = await git.status()
-
-    if (expectedHash && !headHash.startsWith(expectedHash)) {
-      return { error: 'HEAD changed since the last refresh. Please refresh and try again.' }
-    }
-
-    const resolveRef = async (ref) => {
-      if (!ref) return null
-      try {
-        await git.raw(['rev-parse', '--verify', ref])
-        return ref
-      } catch {
-        return null
-      }
-    }
-
-    let integrationRef = null
-    try {
-      const remoteHeadRef = (await git.raw(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'])).trim()
-      integrationRef = await resolveRef(remoteHeadRef)
-    } catch {
-      // origin/HEAD not available
-    }
-
-    if (!integrationRef) integrationRef = await resolveRef('refs/remotes/origin/main')
-    if (!integrationRef) integrationRef = await resolveRef('refs/remotes/origin/master')
-    if (!integrationRef && status.tracking) integrationRef = await resolveRef(status.tracking)
-
-    if (integrationRef) {
-      try {
-        await git.raw(['merge-base', '--is-ancestor', 'HEAD', integrationRef])
-        const integrationLabel = integrationRef.replace(/^refs\/remotes\//, '')
-        return { error: `Latest commit is already merged into ${integrationLabel}. Only unmerged commits can be undone.` }
-      } catch {
-        // HEAD is not merged into integration ref, allow undo.
-      }
-    }
-
-    try {
-      await git.raw(['rev-parse', '--verify', 'HEAD~1'])
-    } catch {
-      return { error: 'Cannot undo the initial commit.' }
+    const undoState = await evaluateUndoLastCommit(git, status, expectedHash)
+    if (!undoState.canUndo) {
+      return { error: undoState.error }
     }
 
     await git.reset(['--mixed', 'HEAD~1'])
-    return { success: true, undoneHash: headHash }
+    return { success: true, undoneHash: undoState.headHash }
   } catch (err) {
     return { error: err.message }
   }
