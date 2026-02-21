@@ -218,7 +218,23 @@ ipcMain.handle('git:pull', async (_, dirPath) => {
 ipcMain.handle('git:push', async (_, dirPath) => {
   try {
     const git = simpleGit(dirPath)
-    const result = await git.push()
+    const status = await git.status()
+
+    if (!status.current) {
+      return { error: 'Unable to detect current branch.' }
+    }
+
+    if (!status.tracking) {
+      const remotes = await git.getRemotes(true)
+      const preferredRemote = remotes.find((remote) => remote.name === 'origin')?.name
+      const fallbackRemote = remotes[0]?.name
+      const remoteName = preferredRemote || fallbackRemote || 'origin'
+
+      await git.push(['--set-upstream', remoteName, status.current])
+      return { success: true, upstreamSet: true, remote: remoteName, branch: status.current }
+    }
+
+    await git.push()
     return { success: true }
   } catch (err) {
     return { error: err.message }
