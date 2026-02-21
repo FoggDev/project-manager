@@ -1729,8 +1729,6 @@ body {
   gap: 8px;
 }
 
-<<<<<<< Updated upstream
-=======
 .terminal-split-controls {
   display: flex;
   align-items: center;
@@ -1771,7 +1769,6 @@ body {
   cursor: not-allowed;
 }
 
->>>>>>> Stashed changes
 .terminal-session-tabs {
   display: flex;
   align-items: center;
@@ -1824,8 +1821,6 @@ body {
 }
 
 .terminal-panels {
-<<<<<<< Updated upstream
-=======
   flex: 1;
   min-height: 0;
 }
@@ -1869,7 +1864,6 @@ body {
 }
 
 .terminal-wrapper {
->>>>>>> Stashed changes
   flex: 1;
   min-height: 0;
 }

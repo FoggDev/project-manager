@@ -299,16 +299,35 @@ ipcMain.handle('git:undo-last-commit', async (_, dirPath, expectedHash) => {
       return { error: 'HEAD changed since the last refresh. Please refresh and try again.' }
     }
 
-    if (status.tracking && Number(status.ahead || 0) <= 0) {
-      return { error: 'Latest commit is already merged/pushed. Only local unmerged commits can be undone.' }
+    const resolveRef = async (ref) => {
+      if (!ref) return null
+      try {
+        await git.raw(['rev-parse', '--verify', ref])
+        return ref
+      } catch {
+        return null
+      }
     }
 
-    if (status.tracking) {
+    let integrationRef = null
+    try {
+      const remoteHeadRef = (await git.raw(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'])).trim()
+      integrationRef = await resolveRef(remoteHeadRef)
+    } catch {
+      // origin/HEAD not available
+    }
+
+    if (!integrationRef) integrationRef = await resolveRef('refs/remotes/origin/main')
+    if (!integrationRef) integrationRef = await resolveRef('refs/remotes/origin/master')
+    if (!integrationRef && status.tracking) integrationRef = await resolveRef(status.tracking)
+
+    if (integrationRef) {
       try {
-        await git.raw(['merge-base', '--is-ancestor', 'HEAD', status.tracking])
-        return { error: 'Latest commit is already merged/pushed. Only local unmerged commits can be undone.' }
+        await git.raw(['merge-base', '--is-ancestor', 'HEAD', integrationRef])
+        const integrationLabel = integrationRef.replace(/^refs\/remotes\//, '')
+        return { error: `Latest commit is already merged into ${integrationLabel}. Only unmerged commits can be undone.` }
       } catch {
-        // HEAD is not an ancestor of upstream: local commit is still unmerged.
+        // HEAD is not merged into integration ref, allow undo.
       }
     }
 

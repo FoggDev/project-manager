@@ -23,22 +23,60 @@ function GitTab({ project, addToast }) {
   const [contextMenu, setContextMenu] = useState(null)
   const masterCheckboxRef = useRef(null)
   const contextMenuRef = useRef(null)
+  const manualUnstagedRef = useRef(new Set())
   const MIN_DIFF_CONTEXT = 3
   const MAX_DIFF_CONTEXT = 20000
 
-  const loadGitData = useCallback(async () => {
-    setLoading(true)
+  const loadGitData = useCallback(async ({ showLoading = false } = {}) => {
+    if (showLoading) setLoading(true)
     try {
       const [statusResult, logResult] = await Promise.all([
         window.api.gitStatus(project.path),
         window.api.gitLog(project.path, 20)
       ])
-      if (!statusResult.error) setStatus(statusResult)
+      if (!statusResult.error) {
+        let nextStatus = statusResult
+
+        const changedPaths = new Set((statusResult.files || []).map((file) => file.path))
+        for (const filePath of Array.from(manualUnstagedRef.current)) {
+          if (!changedPaths.has(filePath)) {
+            manualUnstagedRef.current.delete(filePath)
+          }
+        }
+
+        const stagedSet = new Set(statusResult.staged || [])
+        const filesToStage = (statusResult.files || [])
+          .map((file) => file.path)
+          .filter((filePath) => filePath && !stagedSet.has(filePath) && !manualUnstagedRef.current.has(filePath))
+
+        if (filesToStage.length > 0) {
+          const stageResult = await window.api.gitStage(project.path, filesToStage)
+          if (!stageResult?.error) {
+            const refreshedStatus = await window.api.gitStatus(project.path)
+            if (!refreshedStatus.error) {
+              nextStatus = refreshedStatus
+            }
+          }
+        }
+
+        const currentStagedSet = new Set(nextStatus.staged || [])
+        for (const filePath of Array.from(manualUnstagedRef.current)) {
+          if (currentStagedSet.has(filePath)) {
+            manualUnstagedRef.current.delete(filePath)
+          }
+        }
+
+        setStatus(nextStatus)
+      }
       if (!logResult.error) setCommits(logResult)
     } catch (err) {
       console.error('Failed to load git data:', err)
     }
-    setLoading(false)
+    if (showLoading) setLoading(false)
+  }, [project.path])
+
+  useEffect(() => {
+    manualUnstagedRef.current.clear()
   }, [project.path])
 
   const loadDiffForFile = useCallback(async (filePath, contextLines = diffContextLines) => {
@@ -57,7 +95,7 @@ function GitTab({ project, addToast }) {
   }, [diffContextLines, project.path])
 
   useEffect(() => {
-    loadGitData()
+    loadGitData({ showLoading: true })
   }, [loadGitData])
 
   useEffect(() => {
@@ -117,13 +155,17 @@ function GitTab({ project, addToast }) {
   }
 
   const handleStageFile = async (filePath) => {
+    manualUnstagedRef.current.delete(filePath)
     await window.api.gitStage(project.path, [filePath])
     await loadGitData()
     await refreshDiffForFile(filePath)
   }
 
   const handleUnstageFile = async (filePath) => {
-    await window.api.gitUnstage(project.path, [filePath])
+    const result = await window.api.gitUnstage(project.path, [filePath])
+    if (!result?.error) {
+      manualUnstagedRef.current.add(filePath)
+    }
     await loadGitData()
     await refreshDiffForFile(filePath)
   }
@@ -131,6 +173,9 @@ function GitTab({ project, addToast }) {
   const handleStageAll = async () => {
     if (!status) return
     const files = status.files.map((f) => f.path)
+    for (const filePath of files) {
+      manualUnstagedRef.current.delete(filePath)
+    }
     await window.api.gitStage(project.path, files)
     await loadGitData()
     await refreshDiffForFile(selectedFile)
@@ -139,7 +184,12 @@ function GitTab({ project, addToast }) {
   const handleUnstageAll = async () => {
     if (!status) return
     const files = status.staged
-    await window.api.gitUnstage(project.path, files)
+    const result = await window.api.gitUnstage(project.path, files)
+    if (!result?.error) {
+      for (const filePath of files) {
+        manualUnstagedRef.current.add(filePath)
+      }
+    }
     await loadGitData()
     await refreshDiffForFile(selectedFile)
   }
@@ -150,8 +200,16 @@ function GitTab({ project, addToast }) {
     const allVisibleStaged = filteredFiles.every((file) => stagedSet.has(file.path))
 
     if (allVisibleStaged) {
-      await window.api.gitUnstage(project.path, visiblePaths)
+      const result = await window.api.gitUnstage(project.path, visiblePaths)
+      if (!result?.error) {
+        for (const filePath of visiblePaths) {
+          manualUnstagedRef.current.add(filePath)
+        }
+      }
     } else {
+      for (const filePath of visiblePaths) {
+        manualUnstagedRef.current.delete(filePath)
+      }
       await window.api.gitStage(project.path, visiblePaths)
     }
 
@@ -207,14 +265,9 @@ function GitTab({ project, addToast }) {
       return
     }
     if (status?.tracking && Number(status.ahead || 0) <= 0) {
-      addToast('Nothing to undo. Latest commit is already merged/pushed.', 'error')
+      addToast('Undo is only available for local-only commits that are not merged.', 'error')
       return
     }
-
-    const confirmed = window.confirm(
-      `Undo last commit "${latestCommit.message}"?\n\nThis rewinds HEAD by 1 commit and keeps your file changes locally.`
-    )
-    if (!confirmed) return
 
     setUndoingCommit(true)
     const result = await window.api.gitUndoLastCommit(project.path, latestCommit.fullHash)
@@ -405,13 +458,6 @@ function GitTab({ project, addToast }) {
     )
   }
 
-<<<<<<< Updated upstream
-  const hasChanges = status.files && status.files.length > 0
-  const hasStagedChanges = status.staged && status.staged.length > 0
-  const githubRepoUrl = getGitHubRepoUrl(status.remote)
-
-=======
->>>>>>> Stashed changes
   return (
     <div className="git-workbench">
       <div className="git-workbench-header">
@@ -483,84 +529,7 @@ function GitTab({ project, addToast }) {
               </div>
             ))}
           </div>
-<<<<<<< Updated upstream
-
-          {/* Last Commit */}
-          {commits.length > 0 && (
-            <div className="git-section">
-              <h3><span className="section-icon">🕐</span> Last Commit</h3>
-              <div className="info-card">
-                <div className="info-row">
-                  <div className="info-icon cyan">💬</div>
-                  <span className="info-value" style={{ fontFamily: 'var(--font-family)', fontSize: '13px' }}>
-                    {commits[0].message}
-                  </span>
-                </div>
-                <div className="info-row">
-                  <div className="info-icon purple">👤</div>
-                  <span className="info-label" style={{ fontFamily: 'var(--font-family)' }}>{commits[0].author}</span>
-                  <span className="info-value" style={{ fontFamily: 'var(--font-family)', color: 'var(--text-secondary)' }}>
-                    {formatDate(commits[0].date)}
-                  </span>
-                </div>
-                <div className="info-row">
-                  <div className="info-icon blue">#</div>
-                  <span className="info-label">Commit</span>
-                  {githubRepoUrl ? (
-                    <a
-                      href={`${githubRepoUrl}/commit/${commits[0].fullHash}`}
-                      className="commit-hash commit-hash-link"
-                      title="Open commit on GitHub"
-                      onClick={(event) => {
-                        event.preventDefault()
-                        window.open(`${githubRepoUrl}/commit/${commits[0].fullHash}`, '_blank', 'noopener,noreferrer')
-                      }}
-                    >
-                      {commits[0].hash}
-                    </a>
-                  ) : (
-                    <span className="commit-hash">{commits[0].hash}</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Recent Commits */}
-          <div className="git-section">
-            <h3><span className="section-icon">📜</span> Recent Commits</h3>
-            <div className="info-card">
-              <div className="commit-list">
-                {commits.map((commit) => (
-                  <div key={commit.fullHash} className="commit-item">
-                    {githubRepoUrl ? (
-                      <a
-                        href={`${githubRepoUrl}/commit/${commit.fullHash}`}
-                        className="commit-hash commit-hash-link"
-                        title="Open commit on GitHub"
-                        onClick={(event) => {
-                          event.preventDefault()
-                          window.open(`${githubRepoUrl}/commit/${commit.fullHash}`, '_blank', 'noopener,noreferrer')
-                        }}
-                      >
-                        {commit.hash}
-                      </a>
-                    ) : (
-                      <span className="commit-hash">{commit.hash}</span>
-                    )}
-                    <div className="commit-details">
-                      <div className="commit-message">{commit.message}</div>
-                      <div className="commit-meta">{commit.author} • {formatDate(commit.date)}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </>
-=======
         </div>
->>>>>>> Stashed changes
       )}
 
       {activeSubTab === 'changes' && (
@@ -574,17 +543,16 @@ function GitTab({ project, addToast }) {
                 value={fileFilter}
                 onChange={(event) => setFileFilter(event.target.value)}
               />
-              <div className="git-sidebar-actions">
-                <button className="git-action-btn" onClick={handleStageAll} disabled={!hasChanges}>
-                  Stage All
-                </button>
-                <button className="git-action-btn" onClick={handleUnstageAll} disabled={!hasStagedChanges}>
-                  Unstage All
-                </button>
-              </div>
             </div>
 
-            <div className="git-sidebar-list">
+            <div
+              className="git-sidebar-list"
+              onClick={(event) => {
+                if (event.target === event.currentTarget) {
+                  handleRefresh()
+                }
+              }}
+            >
               <div className="git-sidebar-title">
                 <label className="git-sidebar-master-toggle">
                   <input
@@ -646,22 +614,6 @@ function GitTab({ project, addToast }) {
                   rows={3}
                 />
               </div>
-<<<<<<< Updated upstream
-            </div>
-            <div className="commit-actions">
-              <button className="ai-btn" onClick={handleGenerateCommit} disabled={aiLoading || !hasChanges}>
-                {aiLoading ? <span className="spinner"></span> : <span className="sparkle">✨</span>}
-                {aiLoading ? 'Generating...' : 'AI Message'}
-              </button>
-              <button
-                className="commit-submit-btn"
-                onClick={handleCommit}
-                disabled={!commitMessage.trim() || !hasStagedChanges || committing}
-              >
-                {committing ? <span className="spinner"></span> : '✓'}
-                Commit{hasStagedChanges ? ` ${status.staged.length} file${status.staged.length > 1 ? 's' : ''}` : ''}
-              </button>
-=======
               <div className="commit-actions">
                 <button className="ai-btn" onClick={handleGenerateCommit} disabled={aiLoading || !hasChanges}>
                   {aiLoading ? <span className="spinner"></span> : <span className="sparkle">✨</span>}
@@ -686,13 +638,12 @@ function GitTab({ project, addToast }) {
                     className="git-action-btn last-commit-undo-btn"
                     onClick={handleUndoLastCommit}
                     disabled={undoingCommit}
-                    title="Undo latest local unmerged commit (keeps file changes locally)"
+                    title="Undo latest unmerged commit (keeps file changes locally)"
                   >
                     {undoingCommit ? <span className="spinner"></span> : 'Undo'}
                   </button>
                 </div>
               )}
->>>>>>> Stashed changes
             </div>
           </div>
 

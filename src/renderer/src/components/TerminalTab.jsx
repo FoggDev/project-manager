@@ -26,11 +26,7 @@ function getTerminalTheme() {
   }
 }
 
-<<<<<<< Updated upstream
-function TerminalSession({ sessionId, projectPath, isActive, onStatusChange }) {
-=======
 function TerminalSession({ sessionId, projectPath, isVisible, onStatusChange }) {
->>>>>>> Stashed changes
   const terminalRef = useRef(null)
   const fitAddonRef = useRef(null)
 
@@ -131,22 +127,14 @@ function TerminalSession({ sessionId, projectPath, isVisible, onStatusChange }) 
   }, [onStatusChange, projectPath, sessionId])
 
   useEffect(() => {
-<<<<<<< Updated upstream
-    if (!isActive) return
-=======
     if (!isVisible) return
->>>>>>> Stashed changes
     const timer = setTimeout(() => {
       if (fitAddonRef.current) {
         fitAddonRef.current.fit()
       }
     }, 100)
     return () => clearTimeout(timer)
-<<<<<<< Updated upstream
-  }, [isActive])
-=======
   }, [isVisible])
->>>>>>> Stashed changes
 
   return <div className="terminal-wrapper" ref={terminalRef}></div>
 }
@@ -166,11 +154,8 @@ function TerminalTab({ project }) {
   })
   const [sessions, setSessions] = useState([initialSession.current])
   const [activeSessionId, setActiveSessionId] = useState(initialSession.current.id)
-<<<<<<< Updated upstream
-=======
   const [splitView, setSplitView] = useState(false)
   const [splitCount, setSplitCount] = useState(2)
->>>>>>> Stashed changes
   const [sessionStatuses, setSessionStatuses] = useState({
     [initialSession.current.id]: 'starting'
   })
@@ -220,8 +205,6 @@ function TerminalTab({ project }) {
     }
   }
 
-<<<<<<< Updated upstream
-=======
   useEffect(() => {
     if (!splitView) return
     if (sessions.length < 2) {
@@ -234,7 +217,6 @@ function TerminalTab({ project }) {
     }
   }, [sessions, splitCount, splitView])
 
->>>>>>> Stashed changes
   const restartActive = async () => {
     if (!activeSessionId) return
     setSessionStatus(activeSessionId, 'starting')
@@ -248,8 +230,6 @@ function TerminalTab({ project }) {
   }
 
   const activeStatus = sessionStatuses[activeSessionId] || 'starting'
-<<<<<<< Updated upstream
-=======
   const canSplit = sessions.length > 1
   const visibleLimit = splitView ? Math.min(splitCount, 4, sessions.length) : 1
   const visibleSessionIds = [activeSessionId, ...sessions
@@ -265,7 +245,6 @@ function TerminalTab({ project }) {
     }
     setSplitView(true)
   }
->>>>>>> Stashed changes
 
   return (
     <div className="terminal-container">
@@ -283,11 +262,6 @@ function TerminalTab({ project }) {
           <button className="git-action-btn" onClick={addSession}>
             + New Terminal
           </button>
-<<<<<<< Updated upstream
-        </div>
-      </div>
-
-=======
           <button className="git-action-btn" onClick={handleToggleSplitView} disabled={!canSplit}>
             {splitView ? 'Single View' : 'Split View'}
           </button>
@@ -315,7 +289,6 @@ function TerminalTab({ project }) {
         </div>
       )}
 
->>>>>>> Stashed changes
       <div className="terminal-session-tabs">
         {sessions.map((session) => {
           const isActive = activeSessionId === session.id
@@ -341,17 +314,6 @@ function TerminalTab({ project }) {
         })}
       </div>
 
-<<<<<<< Updated upstream
-      <div className="terminal-panels">
-        {sessions.map((session) => {
-          const isActive = activeSessionId === session.id
-          return (
-            <div key={session.id} className={`terminal-panel ${isActive ? 'active' : ''}`}>
-              <TerminalSession
-                sessionId={session.id}
-                projectPath={project.path}
-                isActive={isActive}
-=======
       <div className={`terminal-panels ${splitView ? `split split-count-${visibleSessionIds.length}` : 'single'}`}>
         {sessions.map((session) => {
           const isVisible = visibleSessionIds.includes(session.id)
@@ -367,7 +329,6 @@ function TerminalTab({ project }) {
                 sessionId={session.id}
                 projectPath={project.path}
                 isVisible={isVisible}
->>>>>>> Stashed changes
                 onStatusChange={setSessionStatus}
               />
             </div>
