@@ -72,6 +72,17 @@ function TerminalSession({ sessionId, projectPath, isVisible, onStatusChange }) 
           window.api.terminalInput(sessionId, data)
         })
 
+        terminal.attachCustomKeyEventHandler((event) => {
+          if (event.type !== 'keydown') return true
+          const key = String(event.key || '').toLowerCase()
+          if (event.metaKey && key === 'k') {
+            event.preventDefault()
+            terminal.clear()
+            return false
+          }
+          return true
+        })
+
         const removeDataListener = window.api.onTerminalData((termId, data) => {
           if (termId === sessionId && mounted) {
             terminal.write(data)
